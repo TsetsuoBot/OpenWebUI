@@ -1269,7 +1269,27 @@ class OAuthConfigForm(BaseModel):
     OAUTH_TOKEN_ENDPOINT_AUTH_METHOD: str | None = None
     OPENID_END_SESSION_ENDPOINT: str | None = None
     OAUTH_TIMEOUT: int | str | None = None
-    OAUTH_CLIENT_TIMEOUT: int | str | None = None
+
+    # Branded providers
+    GOOGLE_CLIENT_ID: str | None = None
+    GOOGLE_CLIENT_SECRET: str | None = None
+    GOOGLE_OAUTH_SCOPE: str | None = None
+    GOOGLE_REDIRECT_URI: str | None = None
+    MICROSOFT_CLIENT_ID: str | None = None
+    MICROSOFT_CLIENT_SECRET: str | None = None
+    MICROSOFT_CLIENT_TENANT_ID: str | None = None
+    MICROSOFT_CLIENT_LOGIN_BASE_URL: str | None = None
+    MICROSOFT_CLIENT_PICTURE_URL: str | None = None
+    MICROSOFT_OAUTH_SCOPE: str | None = None
+    MICROSOFT_REDIRECT_URI: str | None = None
+    GITHUB_CLIENT_ID: str | None = None
+    GITHUB_CLIENT_SECRET: str | None = None
+    GITHUB_CLIENT_SCOPE: str | None = None
+    GITHUB_CLIENT_REDIRECT_URI: str | None = None
+    FEISHU_CLIENT_ID: str | None = None
+    FEISHU_CLIENT_SECRET: str | None = None
+    FEISHU_OAUTH_SCOPE: str | None = None
+    FEISHU_REDIRECT_URI: str | None = None
 
     # Claims
     OAUTH_EMAIL_CLAIM: str | None = None
@@ -1285,6 +1305,10 @@ class OAuthConfigForm(BaseModel):
 
     # Token
     OAUTH_REFRESH_TOKEN_INCLUDE_SCOPE: bool | None = None
+
+    # Read-only metadata, ignored on update: False when the settings are
+    # managed by environment variables (OAuth persistence disabled).
+    OAUTH_CONFIG_EDITABLE: bool | None = None
 
 
 OAUTH_COMMA_LIST_FIELDS = {
@@ -1318,7 +1342,25 @@ OAUTH_CONFIG_KEYS = {
     'OAUTH_TOKEN_ENDPOINT_AUTH_METHOD': 'oauth.token_endpoint_auth_method',
     'OPENID_END_SESSION_ENDPOINT': 'oauth.end_session_endpoint',
     'OAUTH_TIMEOUT': 'oauth.timeout',
-    'OAUTH_CLIENT_TIMEOUT': 'oauth.client.timeout',
+    'GOOGLE_CLIENT_ID': 'oauth.google.client_id',
+    'GOOGLE_CLIENT_SECRET': 'oauth.google.client_secret',
+    'GOOGLE_OAUTH_SCOPE': 'oauth.google.scope',
+    'GOOGLE_REDIRECT_URI': 'oauth.google.redirect_uri',
+    'MICROSOFT_CLIENT_ID': 'oauth.microsoft.client_id',
+    'MICROSOFT_CLIENT_SECRET': 'oauth.microsoft.client_secret',
+    'MICROSOFT_CLIENT_TENANT_ID': 'oauth.microsoft.tenant_id',
+    'MICROSOFT_CLIENT_LOGIN_BASE_URL': 'oauth.microsoft.login_base_url',
+    'MICROSOFT_CLIENT_PICTURE_URL': 'oauth.microsoft.picture_url',
+    'MICROSOFT_OAUTH_SCOPE': 'oauth.microsoft.scope',
+    'MICROSOFT_REDIRECT_URI': 'oauth.microsoft.redirect_uri',
+    'GITHUB_CLIENT_ID': 'oauth.github.client_id',
+    'GITHUB_CLIENT_SECRET': 'oauth.github.client_secret',
+    'GITHUB_CLIENT_SCOPE': 'oauth.github.scope',
+    'GITHUB_CLIENT_REDIRECT_URI': 'oauth.github.redirect_uri',
+    'FEISHU_CLIENT_ID': 'oauth.feishu.client_id',
+    'FEISHU_CLIENT_SECRET': 'oauth.feishu.client_secret',
+    'FEISHU_OAUTH_SCOPE': 'oauth.feishu.scope',
+    'FEISHU_REDIRECT_URI': 'oauth.feishu.redirect_uri',
     'OAUTH_EMAIL_CLAIM': 'oauth.email_claim',
     'OAUTH_USERNAME_CLAIM': 'oauth.username_claim',
     'OAUTH_PICTURE_CLAIM': 'oauth.picture_claim',
@@ -1340,17 +1382,41 @@ def _format_oauth_form_value(field: str, value):
 def _parse_oauth_update_value(field: str, value):
     if field in OAUTH_COMMA_LIST_FIELDS and isinstance(value, str):
         return [item.strip() for item in value.split(',') if item.strip()]
-    if field in {'OAUTH_TIMEOUT', 'OAUTH_CLIENT_TIMEOUT'} and value == '':
+    if field == 'OAUTH_TIMEOUT' and value == '':
         return ''
     return value
+
+
+def _validate_oauth_config_form(form_data: OAuthConfigForm) -> None:
+    """Reject values that would make provider registration raise (see build_oauth_providers)."""
+    if form_data.OAUTH_CODE_CHALLENGE_METHOD not in (None, '', 'S256'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='Unsupported code challenge method; only "S256" (or empty to disable) is supported.',
+        )
+    if form_data.OAUTH_TIMEOUT not in (None, ''):
+        try:
+            int(form_data.OAUTH_TIMEOUT)
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='OAuth timeout must be an integer number of seconds (or empty to disable).',
+            )
+
+
+def oauth_config_editable() -> bool:
+    return all(Config.persistent_enabled_for(storage_key) for storage_key in OAUTH_CONFIG_KEYS.values())
 
 
 async def get_oauth_config_values() -> dict:
     values = await Config.get_many(*OAUTH_CONFIG_KEYS.values())
     return {
-        field: _format_oauth_form_value(field, values[storage_key])
-        for field, storage_key in OAUTH_CONFIG_KEYS.items()
-        if storage_key in values
+        **{
+            field: _format_oauth_form_value(field, values[storage_key])
+            for field, storage_key in OAUTH_CONFIG_KEYS.items()
+            if storage_key in values
+        },
+        'OAUTH_CONFIG_EDITABLE': oauth_config_editable(),
     }
 
 
@@ -1369,7 +1435,30 @@ async def get_oauth_config(request: Request, user=Depends(get_admin_user)):
 
 @router.post('/admin/config/oauth', response_model=OAuthConfigForm)
 async def update_oauth_config(request: Request, form_data: OAuthConfigForm, user=Depends(get_admin_user)):
+    if not oauth_config_editable():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                'OAuth settings are managed by environment variables. '
+                'Set ENABLE_OAUTH_PERSISTENT_CONFIG=true to edit them here.'
+                if Config.PERSISTENT_ENABLED
+                else 'OAuth settings are managed by environment variables '
+                '(persistent config is disabled via ENABLE_PERSISTENT_CONFIG).'
+            ),
+        )
+
+    _validate_oauth_config_form(form_data)
+
     await Config.upsert(oauth_config_updates(form_data.model_dump(exclude_none=True)))
+
+    # Re-register providers so the saved settings apply without a restart.
+    # Only this worker re-registers immediately; sibling uvicorn workers keep
+    # the previous registration until the service restarts.
+    try:
+        await request.app.state.oauth_manager.reload_from_config()
+    except Exception:
+        log.exception('OAuth provider re-registration failed after config update; a restart may be required')
+
     return await get_oauth_config_values()
 
 

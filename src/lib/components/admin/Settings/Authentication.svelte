@@ -42,6 +42,48 @@
 
 	let oauthConfig: any = null;
 
+	// UI-only view switch: providers can be configured simultaneously, this
+	// just selects which provider's credentials are shown for editing.
+	let selectedOAuthProvider = 'oidc';
+
+	const OAUTH_PROVIDER_FIELDS = {
+		google: [
+			{ field: 'GOOGLE_CLIENT_ID', label: 'Client ID' },
+			{ field: 'GOOGLE_CLIENT_SECRET', label: 'Client Secret', sensitive: true },
+			{ field: 'GOOGLE_OAUTH_SCOPE', label: 'Scopes', placeholder: 'openid email profile' },
+			{ field: 'GOOGLE_REDIRECT_URI', label: 'Redirect URI' }
+		],
+		microsoft: [
+			{ field: 'MICROSOFT_CLIENT_ID', label: 'Client ID' },
+			{ field: 'MICROSOFT_CLIENT_SECRET', label: 'Client Secret', sensitive: true },
+			{ field: 'MICROSOFT_CLIENT_TENANT_ID', label: 'Tenant ID' },
+			{ field: 'MICROSOFT_OAUTH_SCOPE', label: 'Scopes', placeholder: 'openid email profile' },
+			{ field: 'MICROSOFT_REDIRECT_URI', label: 'Redirect URI' },
+			{
+				field: 'MICROSOFT_CLIENT_LOGIN_BASE_URL',
+				label: 'Login Base URL',
+				placeholder: 'https://login.microsoftonline.com'
+			},
+			{
+				field: 'MICROSOFT_CLIENT_PICTURE_URL',
+				label: 'Picture URL',
+				placeholder: 'https://graph.microsoft.com/v1.0/me/photo/$value'
+			}
+		],
+		github: [
+			{ field: 'GITHUB_CLIENT_ID', label: 'Client ID' },
+			{ field: 'GITHUB_CLIENT_SECRET', label: 'Client Secret', sensitive: true },
+			{ field: 'GITHUB_CLIENT_SCOPE', label: 'Scopes', placeholder: 'user:email' },
+			{ field: 'GITHUB_CLIENT_REDIRECT_URI', label: 'Redirect URI' }
+		],
+		feishu: [
+			{ field: 'FEISHU_CLIENT_ID', label: 'Client ID' },
+			{ field: 'FEISHU_CLIENT_SECRET', label: 'Client Secret', sensitive: true },
+			{ field: 'FEISHU_OAUTH_SCOPE', label: 'Scopes', placeholder: 'contact:user.base:readonly' },
+			{ field: 'FEISHU_REDIRECT_URI', label: 'Redirect URI' }
+		]
+	};
+
 	const updateLdapServerHandler = async () => {
 		await updateLdapConfig(localStorage.token, ENABLE_LDAP);
 		if (!ENABLE_LDAP) return true;
@@ -54,14 +96,23 @@
 		return !!res;
 	};
 
+	// The code challenge select needs '' instead of null to match an option
+	const normalizeOAuthConfig = (config) => {
+		if (config) {
+			config.OAUTH_CODE_CHALLENGE_METHOD = config.OAUTH_CODE_CHALLENGE_METHOD ?? '';
+		}
+		return config;
+	};
+
 	const updateOAuthHandler = async () => {
-		if (!oauthConfig) return true;
+		// Read-only when managed by environment variables (ENABLE_OAUTH_PERSISTENT_CONFIG=false)
+		if (!oauthConfig || oauthConfig.OAUTH_CONFIG_EDITABLE === false) return true;
 		const res = await updateOAuthConfig(localStorage.token, oauthConfig).catch((error) => {
 			toast.error(`${error}`);
 			return null;
 		});
 		if (res) {
-			oauthConfig = res;
+			oauthConfig = normalizeOAuthConfig(res);
 		}
 		return !!res;
 	};
@@ -98,7 +149,9 @@
 				LDAP_SERVER = await getLdapServer(localStorage.token);
 			})(),
 			(async () => {
-				oauthConfig = await getOAuthConfig(localStorage.token).catch(() => null);
+				oauthConfig = normalizeOAuthConfig(
+					await getOAuthConfig(localStorage.token).catch(() => null)
+				);
 			})()
 		]);
 
@@ -506,261 +559,338 @@
 
 				<hr class="border-gray-100/30 dark:border-gray-850/30 my-2" />
 
-				<div class="pr-1.5">
-					<div class="space-y-3">
-						<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-							<div class="w-full">
-								<div class="self-center text-xs font-medium min-w-fit mb-1">
-									{$i18n.t('Provider Name')}
-								</div>
-								<input
-									class="w-full bg-transparent outline-hidden py-0.5"
-									placeholder="SSO"
-									bind:value={oauthConfig.OAUTH_PROVIDER_NAME}
-								/>
-							</div>
-							<div class="w-full">
-								<div class="self-center text-xs font-medium min-w-fit mb-1">
-									{$i18n.t('Provider URL')}
-								</div>
-								<input
-									class="w-full bg-transparent outline-hidden py-0.5"
-									placeholder="https://accounts.google.com/.well-known/openid-configuration"
-									bind:value={oauthConfig.OPENID_PROVIDER_URL}
-								/>
-							</div>
-						</div>
-
-						<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-							<div class="w-full">
-								<div class="self-center text-xs font-medium min-w-fit mb-1">
-									{$i18n.t('Client ID')}
-								</div>
-								<input
-									class="w-full bg-transparent outline-hidden py-0.5"
-									placeholder={$i18n.t('Enter Client ID')}
-									bind:value={oauthConfig.OAUTH_CLIENT_ID}
-								/>
-							</div>
-							<div class="w-full">
-								<div class="self-center text-xs font-medium min-w-fit mb-1">
-									{$i18n.t('Client Secret')}
-								</div>
-								<SensitiveInput
-									placeholder={$i18n.t('Enter Client Secret')}
-									required={false}
-									outerClassName="flex flex-1 bg-transparent"
-									inputClassName="w-full text-sm py-0.5 bg-transparent"
-									bind:value={oauthConfig.OAUTH_CLIENT_SECRET}
-								/>
-							</div>
-						</div>
-
-						<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-							<div class="w-full">
-								<div class="self-center text-xs font-medium min-w-fit mb-1">
-									{$i18n.t('Redirect URI')}
-								</div>
-								<input
-									class="w-full bg-transparent outline-hidden py-0.5"
-									placeholder={$i18n.t('Enter Redirect URI')}
-									bind:value={oauthConfig.OPENID_REDIRECT_URI}
-								/>
-							</div>
-							<div class="w-full">
-								<div class="self-center text-xs font-medium min-w-fit mb-1">
-									{$i18n.t('Scopes')}
-								</div>
-								<input
-									class="w-full bg-transparent outline-hidden py-0.5"
-									placeholder="openid email profile"
-									bind:value={oauthConfig.OAUTH_SCOPES}
-								/>
-							</div>
-						</div>
-
-						<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-							<div class="w-full">
-								<div class="self-center text-xs font-medium min-w-fit mb-1">
-									{$i18n.t('Email Claim')}
-								</div>
-								<input
-									class="w-full bg-transparent outline-hidden py-0.5"
-									placeholder="email"
-									bind:value={oauthConfig.OAUTH_EMAIL_CLAIM}
-								/>
-							</div>
-							<div class="w-full">
-								<div class="self-center text-xs font-medium min-w-fit mb-1">
-									{$i18n.t('Username Claim')}
-								</div>
-								<input
-									class="w-full bg-transparent outline-hidden py-0.5"
-									placeholder="name"
-									bind:value={oauthConfig.OAUTH_USERNAME_CLAIM}
-								/>
-							</div>
-						</div>
-
-						<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-							<div class="w-full">
-								<div class="self-center text-xs font-medium min-w-fit mb-1">
-									{$i18n.t('Picture Claim')}
-								</div>
-								<input
-									class="w-full bg-transparent outline-hidden py-0.5"
-									placeholder="picture"
-									bind:value={oauthConfig.OAUTH_PICTURE_CLAIM}
-								/>
-							</div>
-							<div class="w-full">
-								<div class="self-center text-xs font-medium min-w-fit mb-1">
-									{$i18n.t('Sub Claim')}
-								</div>
-								<input
-									class="w-full bg-transparent outline-hidden py-0.5"
-									placeholder="sub"
-									bind:value={oauthConfig.OAUTH_SUB_CLAIM}
-								/>
-							</div>
-						</div>
-
-						<div class="flex w-full justify-between pr-2">
-							<div class="self-center text-xs font-medium">
-								{$i18n.t('Enable OAuth Signup')}
-							</div>
-							<Switch bind:state={oauthConfig.ENABLE_OAUTH_SIGNUP} />
-						</div>
-
-						<div class="flex w-full justify-between pr-2">
-							<div class="self-center text-xs font-medium">
-								{$i18n.t('Merge Accounts by Email')}
-							</div>
-							<Switch bind:state={oauthConfig.OAUTH_MERGE_ACCOUNTS_BY_EMAIL} />
-						</div>
-
-						<div class="flex w-full justify-between pr-2">
-							<div class="self-center text-xs font-medium">
-								{$i18n.t('Auto Redirect')}
-							</div>
-							<Switch bind:state={oauthConfig.OAUTH_AUTO_REDIRECT} />
-						</div>
-
-						<div class="w-full">
-							<div class="self-center text-xs font-medium min-w-fit mb-1">
-								{$i18n.t('Allowed Domains')}
-							</div>
-							<input
-								class="w-full bg-transparent outline-hidden py-0.5"
-								placeholder="* (all domains)"
-								bind:value={oauthConfig.OAUTH_ALLOWED_DOMAINS}
-							/>
-						</div>
-
-						<div class="flex w-full justify-between pr-2">
-							<div class="self-center text-xs font-medium">
-								{$i18n.t('Enable Role Mapping')}
-							</div>
-							<Switch bind:state={oauthConfig.ENABLE_OAUTH_ROLE_MANAGEMENT} />
-						</div>
-
-						{#if oauthConfig.ENABLE_OAUTH_ROLE_MANAGEMENT}
-							<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-								<div class="w-full">
-									<div class="self-center text-xs font-medium min-w-fit mb-1">
-										{$i18n.t('Roles Claim')}
-									</div>
-									<input
-										class="w-full bg-transparent outline-hidden py-0.5"
-										placeholder="roles"
-										bind:value={oauthConfig.OAUTH_ROLES_CLAIM}
-									/>
-								</div>
-								<div class="w-full">
-									<div class="self-center text-xs font-medium min-w-fit mb-1">
-										{$i18n.t('Admin Roles')}
-									</div>
-									<input
-										class="w-full bg-transparent outline-hidden py-0.5"
-										placeholder="admin"
-										bind:value={oauthConfig.OAUTH_ADMIN_ROLES}
-									/>
-								</div>
-							</div>
-
-							<div class="w-full">
-								<div class="self-center text-xs font-medium min-w-fit mb-1">
-									{$i18n.t('Allowed Roles')}
-								</div>
-								<input
-									class="w-full bg-transparent outline-hidden py-0.5"
-									placeholder="*"
-									bind:value={oauthConfig.OAUTH_ALLOWED_ROLES}
-								/>
-							</div>
-						{/if}
-
-						<div class="flex w-full justify-between pr-2">
-							<div class="self-center text-xs font-medium">
-								{$i18n.t('Enable Group Mapping')}
-							</div>
-							<Switch bind:state={oauthConfig.ENABLE_OAUTH_GROUP_MANAGEMENT} />
-						</div>
-
-						{#if oauthConfig.ENABLE_OAUTH_GROUP_MANAGEMENT}
-							<div class="flex w-full justify-between pr-2">
-								<div class="self-center text-xs font-medium">
-									{$i18n.t('Auto-Create Groups')}
-								</div>
-								<Switch bind:state={oauthConfig.ENABLE_OAUTH_GROUP_CREATION} />
-							</div>
-
-							<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-								<div class="w-full">
-									<div class="self-center text-xs font-medium min-w-fit mb-1">
-										{$i18n.t('Group Claim')}
-									</div>
-									<input
-										class="w-full bg-transparent outline-hidden py-0.5"
-										placeholder="groups"
-										bind:value={oauthConfig.OAUTH_GROUP_CLAIM}
-									/>
-								</div>
-								<div class="w-full">
-									<div class="self-center text-xs font-medium min-w-fit mb-1">
-										{$i18n.t('Blocked Groups')}
-									</div>
-									<input
-										class="w-full bg-transparent outline-hidden py-0.5"
-										placeholder={$i18n.t('Comma-separated group names')}
-										bind:value={oauthConfig.OAUTH_BLOCKED_GROUPS}
-									/>
-								</div>
-							</div>
-						{/if}
-
-						<div class="flex w-full justify-between pr-2">
-							<div class="self-center text-xs font-medium">
-								{$i18n.t('Update Email')}
-							</div>
-							<Switch bind:state={oauthConfig.OAUTH_UPDATE_EMAIL_ON_LOGIN} />
-						</div>
-
-						<div class="flex w-full justify-between pr-2">
-							<div class="self-center text-xs font-medium">
-								{$i18n.t('Update Name')}
-							</div>
-							<Switch bind:state={oauthConfig.OAUTH_UPDATE_NAME_ON_LOGIN} />
-						</div>
-
-						<div class="flex w-full justify-between pr-2">
-							<div class="self-center text-xs font-medium">
-								{$i18n.t('Update Picture')}
-							</div>
-							<Switch bind:state={oauthConfig.OAUTH_UPDATE_PICTURE_ON_LOGIN} />
+				{#if oauthConfig.OAUTH_CONFIG_EDITABLE === false}
+					<div class="mb-2.5 text-xs">
+						<div
+							class=" bg-yellow-500/20 text-yellow-700 dark:text-yellow-200 rounded-lg px-3 py-2"
+						>
+							{$i18n.t(
+								'OAuth settings are managed by environment variables. Set ENABLE_OAUTH_PERSISTENT_CONFIG=true to edit them here.'
+							)}
 						</div>
 					</div>
-				</div>
+				{/if}
+
+				<fieldset
+					class="block min-w-0 {oauthConfig.OAUTH_CONFIG_EDITABLE === false
+						? 'opacity-60 pointer-events-none'
+						: ''}"
+					disabled={oauthConfig.OAUTH_CONFIG_EDITABLE === false}
+				>
+					<div class="pr-1.5">
+						<div class="space-y-3">
+							<div class="flex w-full justify-between pr-2">
+								<div class="self-center text-xs font-medium">{$i18n.t('Provider')}</div>
+								<div class="flex items-center relative">
+									<select
+										class="w-fit pr-8 rounded-sm px-2 p-1 text-xs bg-transparent outline-hidden text-right"
+										bind:value={selectedOAuthProvider}
+									>
+										<option value="oidc">OpenID Connect</option>
+										<option value="google">Google</option>
+										<option value="microsoft">Microsoft</option>
+										<option value="github">GitHub</option>
+										<option value="feishu">Feishu</option>
+									</select>
+								</div>
+							</div>
+
+							{#if selectedOAuthProvider === 'oidc'}
+								<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+									<div class="w-full">
+										<div class="self-center text-xs font-medium min-w-fit mb-1">
+											{$i18n.t('Provider Name')}
+										</div>
+										<input
+											class="w-full bg-transparent outline-hidden py-0.5"
+											placeholder="SSO"
+											bind:value={oauthConfig.OAUTH_PROVIDER_NAME}
+										/>
+									</div>
+									<div class="w-full">
+										<div class="self-center text-xs font-medium min-w-fit mb-1">
+											{$i18n.t('Provider URL')}
+										</div>
+										<input
+											class="w-full bg-transparent outline-hidden py-0.5"
+											placeholder="https://accounts.google.com/.well-known/openid-configuration"
+											bind:value={oauthConfig.OPENID_PROVIDER_URL}
+										/>
+									</div>
+								</div>
+
+								<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+									<div class="w-full">
+										<div class="self-center text-xs font-medium min-w-fit mb-1">
+											{$i18n.t('Client ID')}
+										</div>
+										<input
+											class="w-full bg-transparent outline-hidden py-0.5"
+											placeholder={$i18n.t('Enter Client ID')}
+											bind:value={oauthConfig.OAUTH_CLIENT_ID}
+										/>
+									</div>
+									<div class="w-full">
+										<div class="self-center text-xs font-medium min-w-fit mb-1">
+											{$i18n.t('Client Secret')}
+										</div>
+										<SensitiveInput
+											placeholder={$i18n.t('Enter Client Secret')}
+											required={false}
+											outerClassName="flex flex-1 bg-transparent"
+											inputClassName="w-full text-sm py-0.5 bg-transparent"
+											bind:value={oauthConfig.OAUTH_CLIENT_SECRET}
+										/>
+									</div>
+								</div>
+
+								<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+									<div class="w-full">
+										<div class="self-center text-xs font-medium min-w-fit mb-1">
+											{$i18n.t('Redirect URI')}
+										</div>
+										<input
+											class="w-full bg-transparent outline-hidden py-0.5"
+											placeholder={$i18n.t('Enter Redirect URI')}
+											bind:value={oauthConfig.OPENID_REDIRECT_URI}
+										/>
+									</div>
+									<div class="w-full">
+										<div class="self-center text-xs font-medium min-w-fit mb-1">
+											{$i18n.t('Scopes')}
+										</div>
+										<input
+											class="w-full bg-transparent outline-hidden py-0.5"
+											placeholder="openid email profile"
+											bind:value={oauthConfig.OAUTH_SCOPES}
+										/>
+									</div>
+								</div>
+
+								<div class="flex w-full justify-between pr-2">
+									<div class="self-center text-xs font-medium">
+										{$i18n.t('Code Challenge Method (PKCE)')}
+									</div>
+									<div class="flex items-center relative">
+										<select
+											class="w-fit pr-8 rounded-sm px-2 p-1 text-xs bg-transparent outline-hidden text-right"
+											bind:value={oauthConfig.OAUTH_CODE_CHALLENGE_METHOD}
+										>
+											<option value="">{$i18n.t('Disabled')}</option>
+											<option value="S256">S256</option>
+										</select>
+									</div>
+								</div>
+							{:else}
+								<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+									{#each OAUTH_PROVIDER_FIELDS[selectedOAuthProvider] as item (selectedOAuthProvider + item.field)}
+										<div class="w-full">
+											<div class="self-center text-xs font-medium min-w-fit mb-1">
+												{$i18n.t(item.label)}
+											</div>
+											{#if item.sensitive}
+												<SensitiveInput
+													placeholder={$i18n.t('Enter Client Secret')}
+													required={false}
+													outerClassName="flex flex-1 bg-transparent"
+													inputClassName="w-full text-sm py-0.5 bg-transparent"
+													bind:value={oauthConfig[item.field]}
+												/>
+											{:else}
+												<input
+													class="w-full bg-transparent outline-hidden py-0.5"
+													placeholder={item.placeholder ?? ''}
+													bind:value={oauthConfig[item.field]}
+												/>
+											{/if}
+										</div>
+									{/each}
+								</div>
+							{/if}
+
+							<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+								<div class="w-full">
+									<div class="self-center text-xs font-medium min-w-fit mb-1">
+										{$i18n.t('Email Claim')}
+									</div>
+									<input
+										class="w-full bg-transparent outline-hidden py-0.5"
+										placeholder="email"
+										bind:value={oauthConfig.OAUTH_EMAIL_CLAIM}
+									/>
+								</div>
+								<div class="w-full">
+									<div class="self-center text-xs font-medium min-w-fit mb-1">
+										{$i18n.t('Username Claim')}
+									</div>
+									<input
+										class="w-full bg-transparent outline-hidden py-0.5"
+										placeholder="name"
+										bind:value={oauthConfig.OAUTH_USERNAME_CLAIM}
+									/>
+								</div>
+							</div>
+
+							<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+								<div class="w-full">
+									<div class="self-center text-xs font-medium min-w-fit mb-1">
+										{$i18n.t('Picture Claim')}
+									</div>
+									<input
+										class="w-full bg-transparent outline-hidden py-0.5"
+										placeholder="picture"
+										bind:value={oauthConfig.OAUTH_PICTURE_CLAIM}
+									/>
+								</div>
+								<div class="w-full">
+									<div class="self-center text-xs font-medium min-w-fit mb-1">
+										{$i18n.t('Sub Claim')}
+									</div>
+									<input
+										class="w-full bg-transparent outline-hidden py-0.5"
+										placeholder="sub"
+										bind:value={oauthConfig.OAUTH_SUB_CLAIM}
+									/>
+								</div>
+							</div>
+
+							<div class="flex w-full justify-between pr-2">
+								<div class="self-center text-xs font-medium">
+									{$i18n.t('Enable OAuth Signup')}
+								</div>
+								<Switch bind:state={oauthConfig.ENABLE_OAUTH_SIGNUP} />
+							</div>
+
+							<div class="flex w-full justify-between pr-2">
+								<div class="self-center text-xs font-medium">
+									{$i18n.t('Merge Accounts by Email')}
+								</div>
+								<Switch bind:state={oauthConfig.OAUTH_MERGE_ACCOUNTS_BY_EMAIL} />
+							</div>
+
+							<div class="flex w-full justify-between pr-2">
+								<div class="self-center text-xs font-medium">
+									{$i18n.t('Auto Redirect')}
+								</div>
+								<Switch bind:state={oauthConfig.OAUTH_AUTO_REDIRECT} />
+							</div>
+
+							<div class="w-full">
+								<div class="self-center text-xs font-medium min-w-fit mb-1">
+									{$i18n.t('Allowed Domains')}
+								</div>
+								<input
+									class="w-full bg-transparent outline-hidden py-0.5"
+									placeholder="* (all domains)"
+									bind:value={oauthConfig.OAUTH_ALLOWED_DOMAINS}
+								/>
+							</div>
+
+							<div class="flex w-full justify-between pr-2">
+								<div class="self-center text-xs font-medium">
+									{$i18n.t('Enable Role Mapping')}
+								</div>
+								<Switch bind:state={oauthConfig.ENABLE_OAUTH_ROLE_MANAGEMENT} />
+							</div>
+
+							{#if oauthConfig.ENABLE_OAUTH_ROLE_MANAGEMENT}
+								<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+									<div class="w-full">
+										<div class="self-center text-xs font-medium min-w-fit mb-1">
+											{$i18n.t('Roles Claim')}
+										</div>
+										<input
+											class="w-full bg-transparent outline-hidden py-0.5"
+											placeholder="roles"
+											bind:value={oauthConfig.OAUTH_ROLES_CLAIM}
+										/>
+									</div>
+									<div class="w-full">
+										<div class="self-center text-xs font-medium min-w-fit mb-1">
+											{$i18n.t('Admin Roles')}
+										</div>
+										<input
+											class="w-full bg-transparent outline-hidden py-0.5"
+											placeholder="admin"
+											bind:value={oauthConfig.OAUTH_ADMIN_ROLES}
+										/>
+									</div>
+								</div>
+
+								<div class="w-full">
+									<div class="self-center text-xs font-medium min-w-fit mb-1">
+										{$i18n.t('Allowed Roles')}
+									</div>
+									<input
+										class="w-full bg-transparent outline-hidden py-0.5"
+										placeholder="*"
+										bind:value={oauthConfig.OAUTH_ALLOWED_ROLES}
+									/>
+								</div>
+							{/if}
+
+							<div class="flex w-full justify-between pr-2">
+								<div class="self-center text-xs font-medium">
+									{$i18n.t('Enable Group Mapping')}
+								</div>
+								<Switch bind:state={oauthConfig.ENABLE_OAUTH_GROUP_MANAGEMENT} />
+							</div>
+
+							{#if oauthConfig.ENABLE_OAUTH_GROUP_MANAGEMENT}
+								<div class="flex w-full justify-between pr-2">
+									<div class="self-center text-xs font-medium">
+										{$i18n.t('Auto-Create Groups')}
+									</div>
+									<Switch bind:state={oauthConfig.ENABLE_OAUTH_GROUP_CREATION} />
+								</div>
+
+								<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+									<div class="w-full">
+										<div class="self-center text-xs font-medium min-w-fit mb-1">
+											{$i18n.t('Group Claim')}
+										</div>
+										<input
+											class="w-full bg-transparent outline-hidden py-0.5"
+											placeholder="groups"
+											bind:value={oauthConfig.OAUTH_GROUP_CLAIM}
+										/>
+									</div>
+									<div class="w-full">
+										<div class="self-center text-xs font-medium min-w-fit mb-1">
+											{$i18n.t('Blocked Groups')}
+										</div>
+										<input
+											class="w-full bg-transparent outline-hidden py-0.5"
+											placeholder={$i18n.t('Comma-separated group names')}
+											bind:value={oauthConfig.OAUTH_BLOCKED_GROUPS}
+										/>
+									</div>
+								</div>
+							{/if}
+
+							<div class="flex w-full justify-between pr-2">
+								<div class="self-center text-xs font-medium">
+									{$i18n.t('Update Email')}
+								</div>
+								<Switch bind:state={oauthConfig.OAUTH_UPDATE_EMAIL_ON_LOGIN} />
+							</div>
+
+							<div class="flex w-full justify-between pr-2">
+								<div class="self-center text-xs font-medium">
+									{$i18n.t('Update Name')}
+								</div>
+								<Switch bind:state={oauthConfig.OAUTH_UPDATE_NAME_ON_LOGIN} />
+							</div>
+
+							<div class="flex w-full justify-between pr-2">
+								<div class="self-center text-xs font-medium">
+									{$i18n.t('Update Picture')}
+								</div>
+								<Switch bind:state={oauthConfig.OAUTH_UPDATE_PICTURE_ON_LOGIN} />
+							</div>
+						</div>
+					</div>
+				</fieldset>
 			</div>
 		{/if}
 	</div>
