@@ -1274,6 +1274,9 @@ async def get_terminal_tools(
     if session_id:
         headers['X-Session-Id'] = session_id
 
+    # Use the policy-resolved URL (includes /p/{policy_id} for orchestrator
+    # connections) — the raw connection URL would hit the orchestrator's
+    # policy-less catch-all and provision a stray default-policy container.
     terminal_cwd = await get_terminal_cwd(server_data['url'], headers, cookies)
 
     tools_dict = {}
