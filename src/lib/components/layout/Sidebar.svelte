@@ -275,7 +275,7 @@
 	const createFolder = async ({ name, data, parent_id }) => {
 		name = name?.trim();
 		if (!name) {
-			toast.error($i18n.t('Folder name cannot be empty.'));
+			toast.error($i18n.t('Project name cannot be empty.'));
 			return;
 		}
 
@@ -974,7 +974,7 @@
 	</div>
 {/if}
 
-<!-- {$i18n.t('New Folder')} -->
+<!-- {$i18n.t('New Project')} -->
 <!-- {$i18n.t('Pinned')} -->
 
 {#if $showSidebar}
@@ -1213,12 +1213,13 @@
 					<SidebarSection
 						id="sidebar-folders"
 						bind:open={showFolders}
-						className="mt-0.5"
-						name={$i18n.t('Folders')}
+						className="px-2 mt-0.5"
+						name={$i18n.t('Projects')}
+						chevron={false}
 						onAdd={() => {
 							showCreateFolderModal = true;
 						}}
-						onAddLabel={$i18n.t('New Folder')}
+						onAddLabel={$i18n.t('New Project')}
 						on:drop={async (e) => {
 							const { type, id, item } = e.detail;
 

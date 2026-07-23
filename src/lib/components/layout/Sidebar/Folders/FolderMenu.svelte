@@ -52,7 +52,7 @@
 				}}
 			>
 				<FolderIcon className="size-3.5" />
-				<div class="flex items-center">{$i18n.t('Create Folder')}</div>
+				<div class="flex items-center">{$i18n.t('Create Project')}</div>
 			</button>
 
 			<hr class="border-gray-50/30 dark:border-gray-800/30 mx-1 my-0.5" />

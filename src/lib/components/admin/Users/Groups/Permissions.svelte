@@ -414,7 +414,7 @@
 		<div class="flex flex-col w-full">
 			<div class="flex w-full justify-between my-1">
 				<div class=" self-center text-xs font-normal">
-					{$i18n.t('Folders Sharing')}
+					{$i18n.t('Projects Sharing')}
 				</div>
 				<Switch bind:state={permissions.sharing.folders} />
 			</div>
@@ -904,7 +904,7 @@
 		<div class="flex flex-col w-full">
 			<div class="flex w-full justify-between my-1">
 				<div class=" self-center text-xs font-normal">
-					{$i18n.t('Folders')}
+					{$i18n.t('Projects')}
 				</div>
 				<Switch bind:state={permissions.features.folders} />
 			</div>

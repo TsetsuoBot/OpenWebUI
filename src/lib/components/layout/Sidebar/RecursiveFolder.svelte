@@ -316,14 +316,14 @@
 		);
 
 		if (res) {
-			toast.success($i18n.t('Folder deleted successfully'));
+			toast.success($i18n.t('Project deleted successfully'));
 			onDelete(folderId);
 		}
 	};
 
 	const updateHandler = async ({ name, meta, data }) => {
 		if (name === '') {
-			toast.error($i18n.t('Folder name cannot be empty.'));
+			toast.error($i18n.t('Project name cannot be empty.'));
 			return;
 		}
 
@@ -349,8 +349,8 @@
 				folders[folderId].data = data;
 			}
 
-			// toast.success($i18n.t('Folder name updated successfully'));
-			toast.success($i18n.t('Folder updated successfully'));
+			// toast.success($i18n.t('Project name updated successfully'));
+			toast.success($i18n.t('Project updated successfully'));
 
 			if ($selectedFolder?.id === folderId) {
 				const folder = await getFolderById(localStorage.token, folderId).catch((error) => {
@@ -465,7 +465,7 @@
 
 	const createSubFolderHandler = async ({ name, meta, data, parent_id }) => {
 		if (name === '') {
-			toast.error($i18n.t('Folder name cannot be empty.'));
+			toast.error($i18n.t('Project name cannot be empty.'));
 			return;
 		}
 
@@ -482,7 +482,7 @@
 		});
 
 		if (res) {
-			toast.success($i18n.t('Folder created successfully'));
+			toast.success($i18n.t('Project created successfully'));
 			dispatch('update');
 		}
 	};
@@ -490,7 +490,7 @@
 
 <DeleteConfirmDialog
 	bind:show={showDeleteConfirm}
-	title={$i18n.t('Delete folder?')}
+	title={$i18n.t('Delete project?')}
 	on:confirm={() => {
 		deleteHandler();
 	}}
@@ -509,7 +509,7 @@
 		<input type="checkbox" bind:checked={deleteFolderContents} />
 
 		<div class="text-xs text-gray-500">
-			{$i18n.t('Delete all contents inside this folder')}
+			{$i18n.t('Delete all contents inside this project')}
 		</div>
 	</div>
 </DeleteConfirmDialog>

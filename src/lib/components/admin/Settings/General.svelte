@@ -226,16 +226,16 @@
 					<Switch bind:state={adminConfig.ENABLE_MESSAGE_RATING} />
 				</AdminSettingRow>
 				<AdminSettingRow
-					label={$i18n.t('Folders')}
-					description={$i18n.t('Allow users to organize chats into folders.')}
+					label={$i18n.t('Projects')}
+					description={$i18n.t('Allow users to organize chats into projects.')}
 				>
 					<Switch bind:state={adminConfig.ENABLE_FOLDERS} />
 				</AdminSettingRow>
 
 				{#if adminConfig.ENABLE_FOLDERS}
 					<AdminSettingField
-						label={$i18n.t('Folder Max File Count')}
-						description={$i18n.t('Maximum number of files allowed per folder.')}
+						label={$i18n.t('Project Max File Count')}
+						description={$i18n.t('Maximum number of files allowed per project.')}
 					>
 						<input
 							class={inputClass}
