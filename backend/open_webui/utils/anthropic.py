@@ -106,6 +106,51 @@ async def get_anthropic_models(url: str, key: str, user: UserModel = None) -> di
 ##############################
 
 
+def _usage_int(value) -> int | None:
+    """Return value as a non-negative int, or None when missing or invalid."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    value = int(value)
+    return value if value >= 0 else None
+
+
+def _extract_anthropic_usage(
+    usage: dict,
+) -> tuple[int | None, int | None, int | None, int | None]:
+    """
+    Convert an OpenAI-compatible usage payload to Anthropic usage fields:
+    (input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens).
+
+    OpenAI's prompt_tokens includes cached tokens, while Anthropic's
+    input_tokens excludes them (total input = input_tokens +
+    cache_creation_input_tokens + cache_read_input_tokens), so the cache
+    counts are subtracted whenever the input count is derived from
+    prompt_tokens. An Anthropic-native input_tokens key is taken as already
+    exclusive. The cache-read count falls back to OpenAI's
+    prompt_tokens_details.cached_tokens.
+
+    A count that is missing, null, or 0 is treated as unreported (None) so
+    callers can keep previously known values; a 0 produced by the cache
+    subtraction is kept, since the upstream did report usage.
+    """
+    cache_creation = _usage_int(usage.get('cache_creation_input_tokens')) or None
+    cache_read = _usage_int(usage.get('cache_read_input_tokens')) or None
+    if cache_read is None:
+        prompt_details = usage.get('prompt_tokens_details')
+        if isinstance(prompt_details, dict):
+            cache_read = _usage_int(prompt_details.get('cached_tokens')) or None
+
+    input_tokens = _usage_int(usage.get('input_tokens')) or None
+    if input_tokens is None:
+        prompt_tokens = _usage_int(usage.get('prompt_tokens')) or None
+        if prompt_tokens is not None:
+            input_tokens = max(prompt_tokens - (cache_creation or 0) - (cache_read or 0), 0)
+
+    output_tokens = _usage_int(usage.get('output_tokens')) or _usage_int(usage.get('completion_tokens')) or None
+
+    return input_tokens, output_tokens, cache_creation, cache_read
+
+
 def _copy_cache_control(source: dict, target: dict) -> dict:
     if isinstance(source, dict) and 'cache_control' in source:
         target['cache_control'] = source['cache_control']
@@ -419,6 +464,11 @@ def convert_anthropic_to_openai_payload(
             else:
                 openai_payload[param] = anthropic_payload[param]
 
+    # Anthropic streaming clients always expect token usage in the final
+    # message_delta event, so ask OpenAI-compatible upstreams to report it.
+    if openai_payload.get('stream'):
+        openai_payload['stream_options'] = {'include_usage': True}
+
     # Tools conversion: Anthropic → OpenAI
     if 'tools' in anthropic_payload:
         openai_tools = []
@@ -529,20 +579,20 @@ def convert_openai_to_anthropic_response(
             }
         )
 
-    # Usage
-    openai_usage = openai_response.get('usage', {})
+    # Usage: prefer upstream-reported statistics; the locally counted
+    # input_tokens is only a fallback for upstreams that report nothing.
+    openai_usage = openai_response.get('usage')
+    if not isinstance(openai_usage, dict):
+        openai_usage = {}
+    usage_input, usage_output, cache_creation, cache_read = _extract_anthropic_usage(openai_usage)
     usage = {
-        'input_tokens': (
-            input_tokens
-            if input_tokens is not None
-            else openai_usage.get('input_tokens', openai_usage.get('prompt_tokens', 0))
-        ),
-        'output_tokens': openai_usage.get('output_tokens', openai_usage.get('completion_tokens', 0)),
+        'input_tokens': usage_input if usage_input is not None else (input_tokens or 0),
+        'output_tokens': usage_output or 0,
     }
-    if 'cache_creation_input_tokens' in openai_usage:
-        usage['cache_creation_input_tokens'] = openai_usage['cache_creation_input_tokens']
-    if 'cache_read_input_tokens' in openai_usage:
-        usage['cache_read_input_tokens'] = openai_usage['cache_read_input_tokens']
+    if cache_creation is not None:
+        usage['cache_creation_input_tokens'] = cache_creation
+    if cache_read is not None:
+        usage['cache_read_input_tokens'] = cache_read
 
     return {
         'id': openai_response.get('id', f'msg_{_uuid.uuid4().hex[:24]}'),
@@ -575,6 +625,24 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
     message_id = f'msg_{_uuid.uuid4().hex[:24]}'
     output_tokens = 0
     stop_reason = 'end_turn'
+    cache_creation_input_tokens = None
+    cache_read_input_tokens = None
+
+    def capture_usage(chunk_usage):
+        nonlocal input_tokens, output_tokens
+        nonlocal cache_creation_input_tokens, cache_read_input_tokens
+
+        if not isinstance(chunk_usage, dict):
+            return
+        chunk_input, chunk_output, cache_creation, cache_read = _extract_anthropic_usage(chunk_usage)
+        if chunk_input is not None:
+            input_tokens = chunk_input
+        if chunk_output is not None:
+            output_tokens = chunk_output
+        if cache_creation is not None:
+            cache_creation_input_tokens = cache_creation
+        if cache_read is not None:
+            cache_read_input_tokens = cache_read
 
     # Track content blocks with a running index.
     # Each text block or tool_use block gets its own index.
@@ -633,13 +701,7 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
                 choices = data.get('choices', [])
                 if not choices:
                     # Check for usage in the final chunk
-                    if data.get('usage'):
-                        input_tokens = data['usage'].get(
-                            'input_tokens', data['usage'].get('prompt_tokens', input_tokens)
-                        )
-                        output_tokens = data['usage'].get(
-                            'output_tokens', data['usage'].get('completion_tokens', output_tokens)
-                        )
+                    capture_usage(data.get('usage'))
                     continue
 
                 delta = choices[0].get('delta', {})
@@ -647,11 +709,7 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
                 message = choices[0].get('message') or {}
 
                 # Update usage if present
-                if data.get('usage'):
-                    input_tokens = data['usage'].get('input_tokens', data['usage'].get('prompt_tokens', input_tokens))
-                    output_tokens = data['usage'].get(
-                        'output_tokens', data['usage'].get('completion_tokens', output_tokens)
-                    )
+                capture_usage(data.get('usage'))
 
                 reasoning_content = (
                     delta.get('reasoning_content')
@@ -891,14 +949,22 @@ async def openai_stream_to_anthropic_stream(openai_stream_generator, model: str 
             block_stop = {'type': 'content_block_stop', 'index': tool['block_index']}
             yield f'event: content_block_stop\ndata: {json.dumps(block_stop)}\n\n'.encode()
 
-    # Emit message_delta with stop reason
+    # Emit message_delta with stop reason and final usage. input_tokens and
+    # cache statistics are included so clients receive the upstream-reported
+    # values even when they differ from the estimate sent in message_start.
+    final_usage = {'input_tokens': input_tokens, 'output_tokens': output_tokens}
+    if cache_creation_input_tokens is not None:
+        final_usage['cache_creation_input_tokens'] = cache_creation_input_tokens
+    if cache_read_input_tokens is not None:
+        final_usage['cache_read_input_tokens'] = cache_read_input_tokens
+
     message_delta = {
         'type': 'message_delta',
         'delta': {
             'stop_reason': stop_reason,
             'stop_sequence': None,
         },
-        'usage': {'output_tokens': output_tokens},
+        'usage': final_usage,
     }
     yield f'event: message_delta\ndata: {json.dumps(message_delta)}\n\n'.encode()
 
