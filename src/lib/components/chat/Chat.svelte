@@ -3720,6 +3720,7 @@
 										{continueResponse}
 										{regenerateResponse}
 										{mergeResponses}
+										{stopResponse}
 										{chatActionHandler}
 										{addMessages}
 										forkHandler={generating || taskIds?.length ? null : handleForkChat}
