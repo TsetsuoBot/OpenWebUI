@@ -1770,7 +1770,7 @@ class ChatTable:
         self,
         folder_id: str,
         skip: int = 0,
-        limit: int = 60,
+        limit: int | None = None,
         sort_by: str = 'updated_at',
         sort_dir: str = 'desc',
         db: AsyncSession | None = None,
@@ -1807,11 +1807,8 @@ class ChatTable:
                 for chat in all_chats
             ]
 
-    async def count_all_chats_by_folder_id(
-        self,
-        folder_id: str,
-        db: AsyncSession | None = None,
-    ) -> int:
+    async def count_all_chats_by_folder_id(self, folder_id: str, db: AsyncSession | None = None) -> int:
+        """Count chats in a folder across ALL users."""
         async with get_async_db_context(db) as session:
             stmt = (
                 select(func.count(Chat.id))

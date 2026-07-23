@@ -513,12 +513,12 @@ async def get_shared_folder_chats(
     chats = await Chats.get_all_chats_by_folder_id(
         id,
         skip=skip,
-        limit=limit if page is not None else 60,
+        limit=limit if page is not None else None,
         sort_by=sort_by,
         sort_dir=sort_dir,
         db=db,
     )
-    total = await Chats.count_all_chats_by_folder_id(id, db=db) if page is not None else len(chats)
+    total = await Chats.count_all_chats_by_folder_id(id, db=db)
 
     # Resolve owner names for display (avatar URLs are constructed client-side)
     owner_cache: dict[str, str] = {}
@@ -531,6 +531,7 @@ async def get_shared_folder_chats(
 
     response = {
         'chats': [{**chat, 'readonly': chat['user_id'] != user.id} for chat in chats],
+        'total': total,
         'folder_permission': 'write' if has_write else 'read',
     }
     if page is not None:
