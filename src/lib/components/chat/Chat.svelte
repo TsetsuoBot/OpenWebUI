@@ -2254,6 +2254,8 @@
 
 		if (error) {
 			await handleOpenAIError(error, message);
+		} else if (error === null) {
+			delete message.error;
 		}
 
 		if (sources && !message?.sources) {
