@@ -594,6 +594,15 @@ try:
 except (ValueError, TypeError):
     AIOHTTP_CLIENT_TIMEOUT_TOOL_SERVER_DATA = 10
 
+AIOHTTP_FILE_STREAM_CHUNK_SIZE = os.getenv('AIOHTTP_FILE_STREAM_CHUNK_SIZE', str(1024 * 1024))
+try:
+    AIOHTTP_FILE_STREAM_CHUNK_SIZE = int(AIOHTTP_FILE_STREAM_CHUNK_SIZE)
+except Exception:
+    AIOHTTP_FILE_STREAM_CHUNK_SIZE = 1024 * 1024
+
+if AIOHTTP_FILE_STREAM_CHUNK_SIZE <= 0:
+    AIOHTTP_FILE_STREAM_CHUNK_SIZE = 1024 * 1024
+
 
 # SSL verification for tool server connections specifically.
 # Accepts "True", "False", or a path to a CA bundle file.
@@ -1037,6 +1046,8 @@ SENTENCE_TRANSFORMERS_CROSS_ENCODER_SIGMOID_ACTIVATION_FUNCTION = (
 ####################################
 # TOOLS/FUNCTIONS PIP OPTIONS
 ####################################
+
+ENABLE_PLUGINS = os.getenv('ENABLE_PLUGINS', 'True').lower() == 'true'
 
 ENABLE_PIP_INSTALL_FRONTMATTER_REQUIREMENTS = (
     os.getenv('ENABLE_PIP_INSTALL_FRONTMATTER_REQUIREMENTS', 'True').lower() == 'true'
